@@ -16,6 +16,8 @@ package framework
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -249,6 +251,28 @@ func (f *Framework) AfterEach() {
 	RemoveCleanupAction(f.cleanupHandle)
 
 	nsDeletionErrors := map[string]error{}
+
+	pods, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).List(metav1.ListOptions{})
+	if err != nil {
+		Logf("Error getting pod.")
+	}
+
+	var opPod v1.Pod
+	for _, pod := range pods.Items {
+		Logf("Found pod: %s", pod.GetName())
+		if strings.HasPrefix(pod.GetName(), "mysql-operator") {
+			opPod = pod
+			break
+		}
+	}
+
+	opPodLogs := f.ClientSet.CoreV1().Pods(f.Namespace.Name).GetLogs(opPod.GetName(), &v1.PodLogOptions{})
+
+	Logf("Printing container logs for %s", opPod.GetName())
+	read, _ := opPodLogs.Stream()
+	defer read.Close()
+	io.Copy(os.Stdout, read)
+	Logf("Finished printing container logs for %s", opPod.GetName())
 
 	// Whether to delete namespace is determined by 3 factors: delete-namespace flag, delete-namespace-on-failure flag and the test result
 	// if delete-namespace set to false, namespace will always be preserved.
