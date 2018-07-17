@@ -250,8 +250,7 @@ func (f *Framework) BeforeEach() {
 func (f *Framework) AfterEach() {
 	RemoveCleanupAction(f.cleanupHandle)
 
-	nsDeletionErrors := map[string]error{}
-
+	// Operator Logs
 	pods, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).List(metav1.ListOptions{})
 	if err != nil {
 		Logf("Error getting pod.")
@@ -273,6 +272,10 @@ func (f *Framework) AfterEach() {
 	defer read.Close()
 	io.Copy(os.Stdout, read)
 	Logf("Finished printing container logs for %s", opPod.GetName())
+
+	// Agent Logs
+
+	nsDeletionErrors := map[string]error{}
 
 	// Whether to delete namespace is determined by 3 factors: delete-namespace flag, delete-namespace-on-failure flag and the test result
 	// if delete-namespace set to false, namespace will always be preserved.
