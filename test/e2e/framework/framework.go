@@ -250,18 +250,19 @@ func (f *Framework) BeforeEach() {
 func (f *Framework) AfterEach() {
 	RemoveCleanupAction(f.cleanupHandle)
 
-	// Operator Logs
 	pods, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).List(metav1.ListOptions{})
 	if err != nil {
-		Logf("Error getting pod.")
+		Logf("Error retrieving pods in %s: %+v", f.Namespace.Name, err)
 	}
 
 	var opPod v1.Pod
+	var agPods []v1.Pod
 	for _, pod := range pods.Items {
-		Logf("Found pod: %s", pod.GetName())
 		if strings.HasPrefix(pod.GetName(), "mysql-operator") {
 			opPod = pod
-			break
+		}
+		if strings.HasPrefix(pod.GetName(), "mysql-agent") {
+			agPods[len(agPods)] = pod
 		}
 	}
 
@@ -274,6 +275,17 @@ func (f *Framework) AfterEach() {
 	Logf("Finished printing container logs for %s", opPod.GetName())
 
 	// Agent Logs
+	for _, agPod := range agPods {
+		containerLogs := f.ClientSet.CoreV1().Pods(f.Namespace.Name).GetLogs(agPod.GetName(),
+			&v1.PodLogOptions{
+				Container: "mysql-agent",
+			})
+		Logf("Printing mysql-agent container logs for %s", agPod.GetName())
+		read, _ := containerLogs.Stream()
+		defer read.Close()
+		io.Copy(os.Stdout, read)
+		Logf("Finished printing mysql container logs for %s", agPod.GetName())
+	}
 
 	nsDeletionErrors := map[string]error{}
 
