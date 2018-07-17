@@ -250,6 +250,7 @@ func (f *Framework) BeforeEach() {
 func (f *Framework) AfterEach() {
 	RemoveCleanupAction(f.cleanupHandle)
 
+	// Dump Logs
 	pods, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).List(metav1.ListOptions{})
 	if err != nil {
 		Logf("Error retrieving pods in %s: %+v", f.Namespace.Name, err)
@@ -258,27 +259,43 @@ func (f *Framework) AfterEach() {
 	var opPod v1.Pod
 	var agPods []v1.Pod
 	for _, pod := range pods.Items {
-		if strings.HasPrefix(pod.GetName(), "mysql-operator") {
+		if strings.Contains(pod.Spec.Containers[0].Image, "mysql-operator") {
 			opPod = pod
+			continue
 		}
-		if strings.HasPrefix(pod.GetName(), "mysql-agent") {
-			agPods[len(agPods)] = pod
+		if strings.Contains(pod.Spec.Containers[0].Image, "mysql-agent") || strings.Contains(pod.Spec.Containers[0].Image, "mysql-server") {
+			agPods = append(agPods, pod)
 		}
 	}
 
-	opPodLogs := f.ClientSet.CoreV1().Pods(f.Namespace.Name).GetLogs(opPod.GetName(), &v1.PodLogOptions{})
-
-	Logf("Printing container logs for %s", opPod.GetName())
-	read, _ := opPodLogs.Stream()
-	defer read.Close()
-	io.Copy(os.Stdout, read)
-	Logf("Finished printing container logs for %s", opPod.GetName())
+	// Operator Logs
+	if opPod.Name != "" {
+		opPodLogs := f.ClientSet.CoreV1().Pods(f.Namespace.Name).GetLogs(opPod.GetName(), &v1.PodLogOptions{})
+		Logf("Printing container logs for %s", opPod.GetName())
+		read, _ := opPodLogs.Stream()
+		defer read.Close()
+		io.Copy(os.Stdout, read)
+		Logf("Finished printing container logs for %s", opPod.GetName())
+	}
 
 	// Agent Logs
 	for _, agPod := range agPods {
 		containerLogs := f.ClientSet.CoreV1().Pods(f.Namespace.Name).GetLogs(agPod.GetName(),
 			&v1.PodLogOptions{
 				Container: "mysql-agent",
+			})
+		Logf("Printing mysql-agent container logs for %s", agPod.GetName())
+		read, _ := containerLogs.Stream()
+		defer read.Close()
+		io.Copy(os.Stdout, read)
+		Logf("Finished printing mysql container logs for %s", agPod.GetName())
+	}
+
+	// Server Logs
+	for _, agPod := range agPods {
+		containerLogs := f.ClientSet.CoreV1().Pods(f.Namespace.Name).GetLogs(agPod.GetName(),
+			&v1.PodLogOptions{
+				Container: "mysql",
 			})
 		Logf("Printing mysql-agent container logs for %s", agPod.GetName())
 		read, _ := containerLogs.Stream()
